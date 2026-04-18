@@ -125,8 +125,6 @@ int commit_walk(commit_walk_fn callback, void *ctx) {
     return 0;
 }
 
-// ─── TODO: Implement these ───────────────────────────────────────────────────
-
 // Read the current HEAD commit hash.
 //
 // Steps:
@@ -140,9 +138,35 @@ int commit_walk(commit_walk_fn callback, void *ctx) {
 //
 // Returns 0 on success, -1 if no commits exist yet.
 int head_read(ObjectID *id_out) {
-    // TODO: Implement
-    (void)id_out;
-    return -1;
+    FILE *f = fopen(HEAD_FILE, "r");
+    if (!f) return -1;
+
+    char line[512];
+    if (!fgets(line, sizeof(line), f)) {
+        fclose(f);
+        return -1;
+    }
+    fclose(f);
+
+    line[strcspn(line, "\r\n")] = '\0';
+
+    if (strncmp(line, "ref: ", 5) == 0) {
+        char ref_path[512];
+        snprintf(ref_path, sizeof(ref_path), "%s/%s", PES_DIR, line + 5);
+        FILE *rf = fopen(ref_path, "r");
+        if (!rf) return -1;
+
+        char hash_str[100];
+        if (!fgets(hash_str, sizeof(hash_str), rf)) {
+            fclose(rf);
+            return -1;
+        }
+        fclose(rf);
+        hash_str[strcspn(hash_str, "\r\n")] = '\0';
+        return hex_to_hash(hash_str, id_out);
+    } else {
+        return hex_to_hash(line, id_out);
+    }
 }
 
 // Update the current branch ref to point to a new commit.
@@ -160,9 +184,57 @@ int head_read(ObjectID *id_out) {
 //
 // Returns 0 on success, -1 on error.
 int head_update(const ObjectID *new_commit) {
-    // TODO: Implement
-    (void)new_commit;
-    return -1;
+    FILE *f = fopen(HEAD_FILE, "r");
+    if (!f) return -1;
+
+    char line[512];
+    if (!fgets(line, sizeof(line), f)) {
+        fclose(f);
+        return -1;
+    }
+    fclose(f);
+
+    line[strcspn(line, "\r\n")] = '\0';
+
+    char target_path[512];
+    if (strncmp(line, "ref: ", 5) == 0) {
+        snprintf(target_path, sizeof(target_path), "%s/%s", PES_DIR, line + 5);
+    } else {
+        strcpy(target_path, HEAD_FILE);
+    }
+
+    char tmp_path[512];
+    snprintf(tmp_path, sizeof(tmp_path), "%s.tmp", target_path);
+
+    FILE *tf = fopen(tmp_path, "w");
+    if (!tf) return -1;
+
+    char hex[HASH_HEX_SIZE + 1];
+    hash_to_hex(new_commit, hex);
+    fprintf(tf, "%s\n", hex);
+
+    fflush(tf);
+    fsync(fileno(tf));
+    fclose(tf);
+
+    if (rename(tmp_path, target_path) != 0) {
+        unlink(tmp_path);
+        return -1;
+    }
+
+    char dir_path[512];
+    strcpy(dir_path, target_path);
+    char *last_slash = strrchr(dir_path, '/');
+    if (last_slash) *last_slash = '\0';
+    else strcpy(dir_path, ".");
+
+    int dir_fd = open(dir_path, O_RDONLY | O_DIRECTORY);
+    if (dir_fd >= 0) {
+        fsync(dir_fd);
+        close(dir_fd);
+    }
+
+    return 0;
 }
 
 // Create a new commit from the current staging area.
@@ -185,7 +257,37 @@ int head_update(const ObjectID *new_commit) {
 //
 // Returns 0 on success, -1 on error.
 int commit_create(const char *message, ObjectID *commit_id_out) {
-    // TODO: Implement
-    (void)message; (void)commit_id_out;
-    return -1;
+    ObjectID tree_id;
+    if (tree_from_index(&tree_id) != 0) return -1;
+
+    ObjectID parent_id;
+    int has_parent = (head_read(&parent_id) == 0);
+
+    Commit c;
+    c.tree = tree_id;
+    c.has_parent = has_parent;
+    if (has_parent) c.parent = parent_id;
+
+    const char *author = pes_author();
+    strncpy(c.author, author, sizeof(c.author) - 1);
+    c.author[sizeof(c.author) - 1] = '\0';
+
+    c.timestamp = (uint64_t)time(NULL);
+
+    strncpy(c.message, message, sizeof(c.message) - 1);
+    c.message[sizeof(c.message) - 1] = '\0';
+
+    void *data;
+    size_t len;
+    if (commit_serialize(&c, &data, &len) != 0) return -1;
+
+    if (object_write(OBJ_COMMIT, data, len, commit_id_out) != 0) {
+        free(data);
+        return -1;
+    }
+    free(data);
+
+    if (head_update(commit_id_out) != 0) return -1;
+
+    return 0;
 }

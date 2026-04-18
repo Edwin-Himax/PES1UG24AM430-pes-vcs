@@ -51,7 +51,7 @@ int hex_to_hash(const char *hex, ObjectID *id_out);
 // To set your name:
 //   export PES_AUTHOR="Alice <alice@example.com>"
 
-#define DEFAULT_AUTHOR "PES User <pes@localhost>"
+#define DEFAULT_AUTHOR "Edwin <edwinhimax.6@gmail.com>"
 
 static inline const char* pes_author(void) {
     const char *env = getenv("PES_AUTHOR");

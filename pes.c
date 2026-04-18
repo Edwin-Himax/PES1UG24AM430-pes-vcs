@@ -112,9 +112,27 @@ void cmd_log(void) {
 //   3. On success, print: "Committed: <first-12-hex-chars>... <message>"
 //   4. On failure, print: "error: commit failed"
 void cmd_commit(int argc, char *argv[]) {
-    // TODO: Implement
-    (void)argc; (void)argv;
-    fprintf(stderr, "error: commit not yet implemented\n");
+    const char *message = NULL;
+    for (int i = 2; i < argc; i++) {
+        if (strcmp(argv[i], "-m") == 0 && i + 1 < argc) {
+            message = argv[i + 1];
+            break;
+        }
+    }
+
+    if (!message) {
+        fprintf(stderr, "error: commit requires a message (-m \"message\")\n");
+        return;
+    }
+
+    ObjectID commit_id;
+    if (commit_create(message, &commit_id) == 0) {
+        char hex[HASH_HEX_SIZE + 1];
+        hash_to_hex(&commit_id, hex);
+        printf("Committed: %.12s... %s\n", hex, message);
+    } else {
+        fprintf(stderr, "error: commit failed\n");
+    }
 }
 
 // ─── PROVIDED: Command dispatch ─────────────────────────────────────────────

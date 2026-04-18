@@ -37,10 +37,10 @@ make clean    # Remove all build artifacts
 PES-VCS reads the author name from the `PES_AUTHOR` environment variable:
 
 ```bash
-export PES_AUTHOR="Your Name <your.email@example.com>"
+export PES_AUTHOR="Edwin <edwinhimax.6@gmail.com>"
 ```
 
-If unset, it defaults to `"PES User <pes@localhost>"`.
+If unset, it defaults to `"Edwin <edwinhimax.6@gmail.com>"`.
 
 ### File Inventory
 
@@ -657,3 +657,36 @@ The following questions cover filesystem concepts beyond the implementation scop
 - **Git Internals** (Pro Git book): https://git-scm.com/book/en/v2/Git-Internals-Plumbing-and-Porcelain
 - **Git from the inside out**: https://codewords.recurse.com/issues/two/git-from-the-inside-out
 - **The Git Parable**: https://tom.preston-werner.com/2009/05/19/the-git-parable.html
+
+---
+
+## Answers to Analysis Questions
+
+### Phase 1: Object Store
+**Q1.1:** Sharding prevents degradation in filesystem lookup times that occur when thousands of files reside in a single flat directory structure.
+**Q1.2:** POSIX guarantees that `rename()` operations are atomic. This ensures that the file is entirely available or entirely absent; it's never written partially into the final location during a crash.
+**Q1.3:** The probability of a collision in SHA-256 for 1 billion objects is virtually 0 (mathematically approaching `10^(-60)`). Git migrated from SHA-1 because researchers successfully constructed intentional hash collisions against SHA-1 (the "SHAttered" attack).
+
+### Phase 2: Trees
+**Q2.1:** If entries weren't sorted deterministically, two identical directory trees with elements ordered differently would yield entirely different SHA-256 tree hashes. Sorting establishes a standardized unique fingerprint.
+**Q2.2:** Execution bits (`x`) must be retained securely within the version control system so that bash scripts/compilers safely execute upon checkout. Ignoring this would mandate constant `chmod +x` manual actions.
+**Q2.3:** Git models directories naturally inside `Tree` nodes, mapping path names strictly linking towards `blob` components recursively down. Empty directories contain no files (thereby no nested `blobs`) thus creating nothing for the `tree` object to track. 
+
+### Phase 3: Index
+**Q3.1:** Comparing `mtime` and size allows the `pes status` command to accurately bypass heavily expensive `SHA-256` hash reculculations over the entire working directory. The optimization only fails if a file is tampered identically backwards in file-size bytes and written back strictly inside the exact second matching its recorded `mtime`.
+**Q3.2:** Sorting paths prior to committing the index file establishes consistent iteration patterns, faster tracking queries, and deterministic binary search structures identically mirroring Tree algorithms.
+**Q3.3:** Half-written/corrupt properties inside `.pes/index` directly disable file change detections and git mechanisms. `write-temp-then-rename` bypasses crashes seamlessly guaranteeing state tracking holds properly.
+
+### Phase 4: Commits
+**Q4.1:** It creates a singular atomic operation where all chained history references shift perfectly indicating the operation succeeded permanently.
+**Q4.2:** Safe and securely recoverable state! The repository houses an "orphan" unreachable commit that wasn't successfully linked yet. The process can be harmlessly repeated; GC systems clear these orphaned spaces up later.
+**Q4.3:** Overwriting `write()` directly risks generating truncated/cut histories if the crash manifests after outputting partial hex sequences. Such issues directly ruin branch mappings.
+
+### Branching & Checkout 
+**Q5.1:** `pes checkout` requires pointing `HEAD` to target branching references properly, analyzing the delta variations inside `.pes/index` structures, and physically updating/rewriting working directory files accurately mirroring target branch scopes safely absent user collisions.
+**Q5.2:** Traverse and cross-analyze `status`. If local un-staged hashes map differently towards targeted checked-out commits overriding the modified `blobs`, prompt users of conflicting dirty directories!
+**Q5.3:** Direct commit sequences shift standard pointer links successfully alongside `HEAD`. Detached head environments detach the branch anchor; meaning subsequent operations leave unreferenced orphaned artifacts recovered via `reflog` histories.
+
+### GC Space Reclamation
+**Q6.1:** Traverse history logs via mark-and-sweep! Starting at `HEAD` and branch-file anchors, `mark` iterated links properly as safe. Loop `.pes/objects/` folders scanning for unreachable spaces lacking marks. We would iteratively need to trace exactly 100,000 links iteratively evaluating active object pointers.
+**Q6.2:** If garbage collections prune spaces independently whilst un-tied concurrent objects manifest mid-write missing branch connections properly... active structures delete! Git locks files inherently preventing synchronization data losses explicitly adding grace periods assuring 14-30 day delays buffering live data.
